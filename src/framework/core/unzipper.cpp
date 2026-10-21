@@ -34,6 +34,8 @@ const int MAX_FILENAME = 512;
 const int READ_SIZE = 8192;
 const char dir_delimiter = '/';
 
+static void extractAll(unzFile zipfile, const std::filesystem::path& destinationFolder);
+
 void unzipper::extract(const char* fileBuffer, uint fileLength, std::string& destinationPath) {
     const std::filesystem::path destinationFolder { destinationPath };
     if (!std::filesystem::exists(destinationFolder)) {
@@ -48,7 +50,23 @@ void unzipper::extract(const char* fileBuffer, uint fileLength, std::string& des
     memcpy(unzmem.base, fileBuffer, unzmem.size);
     fill_memory_filefunc(&filefunc32, &unzmem);
     unzFile zipfile = unzOpen2(nullptr, &filefunc32);
+    extractAll(zipfile, destinationFolder);
+}
 
+// [Imperium] extrai de um .zip em disco (o data.zip do Imperium passa de 400 MB e nao cabe duas vezes na RAM do celular)
+void unzipper::extractFile(const std::string& zipPath, std::string& destinationPath) {
+    const std::filesystem::path destinationFolder { destinationPath };
+    if (!std::filesystem::exists(destinationFolder)) {
+        std::filesystem::create_directories(destinationFolder);
+    }
+    unzFile zipfile = unzOpen(zipPath.c_str());
+    if (!zipfile) {
+        g_logger.fatal("Could not open data zip on disk");
+    }
+    extractAll(zipfile, destinationFolder);
+}
+
+static void extractAll(unzFile zipfile, const std::filesystem::path& destinationFolder) {
     // Get info about the zip file
     unz_global_info global_info;
     if ( unzGetGlobalInfo( zipfile, &global_info ) != UNZ_OK )

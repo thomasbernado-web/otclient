@@ -22,6 +22,9 @@
 #ifdef ANDROID
 
 #include "androidmanager.h"
+#include <fstream>
+#include <vector>
+#include <filesystem>
 #include <framework/global.h>
 #include <framework/core/unzipper.h>
 #include <framework/core/resourcemanager.h>
@@ -115,32 +118,67 @@ void AndroidManager::setClipboardText(const std::string& text) {
 }
 
 void AndroidManager::unZipAssetData() {
+    // [Imperium] data.zip passa de 400 MB: copia o asset em blocos para um .zip temporario em disco e
+    // extrai de la (o caminho antigo carregava tudo na RAM duas vezes). Alem disso, a extracao e refeita
+    // quando o data.zip do APK muda de tamanho/versao (antes, so na 1a vez: o app atualizado ficava com dados velhos).
     std::string destFolder = getAppBaseDir() + "/game_data/";
-
     const std::filesystem::path initLua { destFolder + "init.lua" };
-    if (std::filesystem::exists(initLua)) {
-        return;
-    }
+    const std::filesystem::path stampFile { getAppBaseDir() + "/game_data.stamp" };
 
     AAsset* dataAsset = AAssetManager_open(
             m_app->activity->assetManager,
             "data.zip",
-            AASSET_MODE_BUFFER);
+            AASSET_MODE_STREAMING);
 
     if (!dataAsset) {
-        g_logger.fatal("Failed to open data.zip from APK assets. Run setup_android_deps.sh to generate it.");
+        g_logger.fatal("Failed to open data.zip from APK assets.");
         return;
     }
 
-    auto dataFileLength = AAsset_getLength(dataAsset);
-    char* dataContent = (char *) malloc(dataFileLength + 1);
-    AAsset_read(dataAsset, dataContent, dataFileLength);
-    dataContent[dataFileLength] = '\0';
+    const off64_t dataFileLength = AAsset_getLength64(dataAsset);
+    const std::string stamp = std::to_string(static_cast<long long>(dataFileLength));
 
-    unzipper::extract(dataContent, dataFileLength, destFolder);
+    if (std::filesystem::exists(initLua)) {
+        std::string current;
+        std::ifstream in(stampFile);
+        if (in) std::getline(in, current);
+        if (current == stamp) {
+            AAsset_close(dataAsset);
+            return;
+        }
+        std::error_code ec;
+        std::filesystem::remove_all(destFolder, ec);
+    }
 
+    const std::string tmpZip = getAppBaseDir() + "/data_tmp.zip";
+    {
+        std::ofstream out(tmpZip, std::ios::binary | std::ios::trunc);
+        if (!out) {
+            AAsset_close(dataAsset);
+            g_logger.fatal("Could not create temporary data zip (no free space?)");
+            return;
+        }
+        std::vector<char> chunk(4 * 1024 * 1024);
+        int n;
+        while ((n = AAsset_read(dataAsset, chunk.data(), chunk.size())) > 0) {
+            out.write(chunk.data(), n);
+        }
+        out.flush();
+        if (!out) {
+            AAsset_close(dataAsset);
+            g_logger.fatal("Could not write temporary data zip (no free space?)");
+            return;
+        }
+    }
     AAsset_close(dataAsset);
-    free(dataContent);
+
+    unzipper::extractFile(tmpZip, destFolder);
+
+    std::error_code ec;
+    std::filesystem::remove(tmpZip, ec);
+
+    std::ofstream stampOut(stampFile, std::ios::trunc);
+    stampOut << stamp;
 }
 
 std::string AndroidManager::getAppBaseDir() {

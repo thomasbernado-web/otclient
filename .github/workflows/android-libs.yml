@@ -1,0 +1,35 @@
+name: Imperium - bibliotecas nativas Android (so motor, sem dados do jogo)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  apk:
+    uses: ./.github/workflows/reusable-build-android-apk.yml
+
+  release:
+    needs: apk
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: otclient-android-release-*
+          path: apk
+      - name: Extrair libs e publicar
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          apk="$(find apk -name '*.apk' | head -n 1)"
+          mkdir -p libs/arm64-v8a
+          unzip -j "$apk" 'lib/arm64-v8a/*.so' -d libs/arm64-v8a
+          ls -l libs/arm64-v8a
+          (cd libs && zip -r ../imperium-libs-arm64-v8a.zip arm64-v8a)
+          echo "${GITHUB_SHA}" > commit.txt
+          gh release delete libs-latest -R "${GITHUB_REPOSITORY}" --yes --cleanup-tag || true
+          gh release create libs-latest imperium-libs-arm64-v8a.zip commit.txt -R "${GITHUB_REPOSITORY}" \
+            --title "libs-latest" --notes "libotclient.so + libc++_shared.so (arm64-v8a) compiladas de ${GITHUB_SHA}. Sem dados do jogo."

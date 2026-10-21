@@ -27,4 +27,5 @@
 namespace unzipper {
 
     void extract(const char* fileBuffer, uint fileLength, std::string& destinationPath);
+    void extractFile(const std::string& zipPath, std::string& destinationPath);
 };
