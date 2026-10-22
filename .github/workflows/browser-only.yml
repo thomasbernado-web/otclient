@@ -1,0 +1,11 @@
+name: Browser build (so navegador)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    uses: ./.github/workflows/reusable-build-browser.yml
