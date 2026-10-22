@@ -607,6 +607,22 @@ bool Http::cancel(int id)
 #else
 std::shared_ptr<ix::HttpClient> g_ixHttpClient;
 
+// [Imperium] O ix::HttpClient assincrono atende UM pedido por vez (1 thread) e abre conexao nova a cada arquivo.
+// Baixar 18 mil arquivos pequenos assim leva horas no celular; para os downloads usamos um pequeno conjunto de
+// clientes (round-robin). get/post/ws continuam no cliente principal.
+namespace {
+    constexpr size_t kExtraDownloadClients = 3;
+    std::vector<std::shared_ptr<ix::HttpClient>> g_ixDownloadClients;
+    std::atomic<unsigned> g_ixDownloadNext{ 0 };
+
+    std::shared_ptr<ix::HttpClient> pickDownloadClient()
+    {
+        const size_t total = g_ixDownloadClients.size() + 1;
+        const size_t idx = g_ixDownloadNext.fetch_add(1) % total;
+        return idx == 0 ? g_ixHttpClient : g_ixDownloadClients[idx - 1];
+    }
+}
+
 void Http::init()
 {
     if (m_working.load())
@@ -620,6 +636,10 @@ void Http::init()
     // if a request came in after Http::terminate() reset the pointer.
     if (!g_ixHttpClient) {
         g_ixHttpClient = std::make_shared<ix::HttpClient>(true);
+    }
+    if (g_ixDownloadClients.empty()) {
+        for (size_t i = 0; i < kExtraDownloadClients; ++i)
+            g_ixDownloadClients.push_back(std::make_shared<ix::HttpClient>(true));
     }
     m_working.store(true);
 }
@@ -664,6 +684,7 @@ void Http::terminate()
         }
     }
 
+    g_ixDownloadClients.clear();
     g_ixHttpClient.reset();
     ix::uninitNetSystem();
 }
@@ -898,7 +919,7 @@ int Http::download(const std::string& url, const std::string& path, int timeout)
         });
     };
 
-    if (!g_ixHttpClient->performRequest(request, callback)) {
+    if (!pickDownloadClient()->performRequest(request, callback)) {
         const std::string error = "http_error::queue";
         std::string body;
         result->finished = true;
