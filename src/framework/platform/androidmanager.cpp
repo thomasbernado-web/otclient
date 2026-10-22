@@ -146,8 +146,12 @@ void AndroidManager::unZipAssetData() {
             AAsset_close(dataAsset);
             return;
         }
-        std::error_code ec;
-        std::filesystem::remove_all(destFolder, ec);
+        // [Imperium] Variante lite: o atualizador guarda em game_data o que baixou (centenas de MB). Se o data.zip
+        // novo e do tipo lite (arquivo "imperium_lite" ja extraido antes), so extrai por cima, sem apagar nada.
+        if (!std::filesystem::exists(destFolder + "imperium_lite")) {
+            std::error_code ec;
+            std::filesystem::remove_all(destFolder, ec);
+        }
     }
 
     const std::string tmpZip = getAppBaseDir() + "/data_tmp.zip";
