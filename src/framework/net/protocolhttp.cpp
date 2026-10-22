@@ -23,9 +23,11 @@
 #include "protocolhttp.h"
 
 #include "framework/core/eventdispatcher.h"
+#include "framework/core/resourcemanager.h"
 #include "framework/util/crypt.h"
 
 #include <algorithm>
+#include <filesystem>
 #ifdef __EMSCRIPTEN__
 #include <cstring>
 #include <limits>
@@ -1152,6 +1154,16 @@ std::shared_ptr<ix::HttpRequestArgs> Http::buildRequest(const std::string& url, 
         request->transferTimeout = timeout;
     }
     request->followRedirects = true;
+#ifdef __ANDROID__
+    // [Imperium] O OpenSSL do Android nao tem diretorio de CAs padrao: sem isto, todo HTTPS do g_http falha na
+    // verificacao do certificado. Usa o cacert.pem que vai junto dos dados (so se existir).
+    {
+        std::error_code ec;
+        const std::string caFile = g_resources.getWorkDir() + "cacert.pem";
+        if (std::filesystem::is_regular_file(caFile, ec))
+            request->tlsOptions.caFile = caFile;
+    }
+#endif
     request->extraHeaders["User-Agent"] = m_userAgent;
     for (const auto& header : m_custom_header) {
         request->extraHeaders[header.first] = header.second;
