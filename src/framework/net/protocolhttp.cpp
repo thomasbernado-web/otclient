@@ -1179,10 +1179,20 @@ std::shared_ptr<ix::HttpRequestArgs> Http::buildRequest(const std::string& url, 
     // [Imperium] O OpenSSL do Android nao tem diretorio de CAs padrao: sem isto, todo HTTPS do g_http falha na
     // verificacao do certificado. Usa o cacert.pem que vai junto dos dados (so se existir).
     {
-        std::error_code ec;
-        const std::string caFile = g_resources.getWorkDir() + "cacert.pem";
-        if (std::filesystem::is_regular_file(caFile, ec))
-            request->tlsOptions.caFile = caFile;
+        // as opcoes de TLS ficam no cliente (nao no pedido): configura todos uma unica vez, antes do 1o pedido
+        static std::atomic<bool> tlsConfigurado{ false };
+        if (!tlsConfigurado.load()) {
+            std::error_code ec;
+            const std::string caFile = g_resources.getWorkDir() + "cacert.pem";
+            if (std::filesystem::is_regular_file(caFile, ec)) {
+                ix::SocketTLSOptions tls;
+                tls.caFile = caFile;
+                g_ixHttpClient->setTLSOptions(tls);
+                for (auto& cliente : g_ixDownloadClients)
+                    cliente->setTLSOptions(tls);
+                tlsConfigurado = true;
+            }
+        }
     }
 #endif
     request->extraHeaders["User-Agent"] = m_userAgent;
