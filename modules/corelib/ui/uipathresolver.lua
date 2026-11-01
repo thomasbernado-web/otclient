@@ -19,34 +19,33 @@ local function resolveCallerPath(path)
         return path
     end
 
-    -- level 3: 1 = resolveCallerPath, 2 = wrapper, 3 = caller
-    local info = debug.getinfo(3, 'S')
-    local src = info and info.source
-    if not src or src:sub(1, 1) ~= '@' then
-        return path
-    end
+    -- 1 = resolveCallerPath, 2 = wrapper, 3 = caller. A tail call ("return g_ui.loadUI(...)") erases the caller's
+    -- frame, so keep walking up the stack until a file whose directory really holds the target.
+    local level = 3
+    while true do
+        local info = debug.getinfo(level, 'S')
+        if not info then
+            return path
+        end
 
-    src = src:sub(2)
-    if src:sub(1, 1) ~= '/' then
-        return path
-    end
+        local src = info.source
+        if src and src:sub(1, 2) == '@/' then
+            local dir = src:sub(2):match('^(.*)/[^/]*$')
+            if dir and dir ~= '' then
+                local candidate = dir .. '/' .. path
+                -- mirror g_resources.guessFilePath(candidate, 'otui')
+                local candidateFile = candidate
+                if candidate:sub(-5) ~= '.otui' then
+                    candidateFile = candidate .. '.otui'
+                end
 
-    local dir = src:match('^(.*)/[^/]*$')
-    if not dir or dir == '' then
-        return path
+                if g_resources.fileExists(candidateFile) then
+                    return candidate
+                end
+            end
+        end
+        level = level + 1
     end
-
-    local candidate = dir .. '/' .. path
-    -- mirror g_resources.guessFilePath(candidate, 'otui')
-    local candidateFile = candidate
-    if candidate:sub(-5) ~= '.otui' then
-        candidateFile = candidate .. '.otui'
-    end
-
-    if g_resources.fileExists(candidateFile) then
-        return candidate
-    end
-    return path
 end
 
 if not g_ui.__pathResolverInstalled then
