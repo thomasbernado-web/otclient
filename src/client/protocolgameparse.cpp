@@ -1929,7 +1929,7 @@ void ProtocolGame::parseMagicEffect(const InputMessagePtr& msg)
                     const uint16_t effectSource = g_game.getFeature(Otc::GameEffectSource) ? msg->getU8() : 0;
                     if (!g_things.isValidDatId(shotId, ThingCategoryMissile)) {
                         g_logger.traceError("invalid missile id {}", shotId);
-                        return;
+                        break; // Imperium 05/11: segue lendo a lista; return deixava o pacote torto e caia a conexao
                     }
 
                     const auto& missile = std::make_shared<Missile>();
@@ -1951,7 +1951,7 @@ void ProtocolGame::parseMagicEffect(const InputMessagePtr& msg)
                     const uint16_t effectSource = g_game.getFeature(Otc::GameEffectSource) ? msg->getU8() : 0;
                     if (!g_things.isValidDatId(effectId, ThingCategoryEffect)) {
                         g_logger.traceError("invalid effect id {}", effectId);
-                        continue;
+                        break; // Imperium 05/11: continue pulava o proximo tipo, lia o pacote torto e caia a conexao
                     }
 
                     const auto& effect = std::make_shared<Effect>();
